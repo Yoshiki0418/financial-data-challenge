@@ -1,1 +1,9 @@
 numpy
+omegaconf
+hydra-core==1.3.2
+einops
+mne==1.6.0
+wandb
+termcolor
+pymatreader
+pandas
