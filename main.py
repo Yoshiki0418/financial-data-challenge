@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import logging
 
 from modules.get_query import get_query
-from modules import Store, Retrieve, AugmentPrompt, Generate, get_embedded
+from modules import Store, Retrieve, AugmentPrompt, Generate, get_embedded, create_embedding_instance
 
 load_dotenv()
 
@@ -34,8 +34,8 @@ def run(args: DictConfig):
     RetrieveEmbeddingClass = get_embedded(args.embedded_type.retrieve)
 
     # ストアと埋め込みクラスの初期化
-    store_embeddings = StoreEmbeddingClass(client=client)
-    retrieve_embeddings = RetrieveEmbeddingClass(client=client)
+    store_embeddings = create_embedding_instance(StoreEmbeddingClass, client=client, model_name=None)
+    retrieve_embeddings = create_embedding_instance(RetrieveEmbeddingClass, client=client, model_name=None)
 
     # FAISSをビルド
     if args.create_faiss:
