@@ -1,1 +1,26 @@
 test: test
+
+create_embedding: false
+
+embedded_type: 
+  store: AzureOpenAIEmbeddings
+  retrieve: AzureOpenAIEmbeddings
+
+store:
+  embedded_path: data/processed/embedded
+  faiss_index_path: data/processed/faiss_index
+  chunk_size: 2000
+  chunk_overlap: 200
+
+retrieve:
+  search:
+    top_k: 5
+    return_text: True
+
+augmentprompt:
+  mode: concise
+
+generate:
+  model: 4omini
+  max_tokens: 54
+  temperature: 0.7

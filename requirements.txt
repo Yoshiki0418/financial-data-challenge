@@ -7,3 +7,12 @@ wandb
 termcolor
 pymatreader
 pandas
+openai
+langchain
+pypdfium2
+langchain-community
+faiss-cpu
+transformers 
+torch
+tiktoken
+python-dotenv
