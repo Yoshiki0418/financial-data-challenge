@@ -36,11 +36,13 @@ def run(args: DictConfig):
     # ストアと埋め込みクラスの初期化
     store_embeddings = StoreEmbeddingClass(client=client)
     retrieve_embeddings = RetrieveEmbeddingClass(client=client)
+    store = Store(store_embeddings, **args.store)
 
-    # FAISSをビルド
-    if args.create_faiss:
-        store = Store(store_embeddings, **args.store)
-        store.build_faiss_index()
+    if args.create_embedding:
+        store.store_embeddings("test1.pkl")
+ 
+    store.load_embeddings("test1.pkl")
+    store.old_build_faiss_index()
 
     # RAGの初期化
     retrieve = Retrieve(retrieve_embeddings, args.store.faiss_index_path)
@@ -52,11 +54,10 @@ def run(args: DictConfig):
     results = []
     
     for idx, query in enumerate(queries):
-        print("-------------------------------------------------------------------------------------------")
         print(f"質問{idx}: {query}")
 
         # 質問を入力して検索
-        relevant_docs = retrieve.search(query=query, **args.retrieve.search)
+        relevant_docs = retrieve.old_search(query=query, **args.retrieve.search)
 
         # プロンプトの構築
         messages = augment.build_prompt(query, relevant_docs)  
@@ -64,8 +65,6 @@ def run(args: DictConfig):
         # 回答生成
         answer = generate.generate_answer(messages)
         results.append([idx, answer])
-        
-        print("")
 
     # csvファイルを構築する
     results_df = pd.DataFrame(results)

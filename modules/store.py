@@ -19,23 +19,23 @@ class Store:
     pdf_to_company = {
         "1.pdf": "4℃",
         "2.pdf": "IHI",
-        "3.pdf": "NISSAN、日産",
-        "4.pdf": "KAGOME、カゴメ",
-        "5.pdf": "KITZ、キッツ",
-        "6.pdf": "KUREHA、クレハ",
-        "7.pdf": "GLORY、グロリー",
+        "3.pdf": "NISSAN",
+        "4.pdf": "KAGOME",
+        "5.pdf": "KITZ",
+        "6.pdf": "KUREHA",
+        "7.pdf": "GLORY",
         "8.pdf": "サントリー",
         "9.pdf": "ハウス食品",
         "10.pdf": "パナソニック",
         "11.pdf": "Media Do",
-        "12.pdf": "MOS、モスフードサービス",
+        "12.pdf": "MOS",
         "13.pdf": "ライフコーポレーション",
         "14.pdf": "高松コンストラクション",
         "15.pdf": "全国保証株式会社",
         "16.pdf": "東急不動産",
         "17.pdf": "TOYO",
         "18.pdf": "日清食品",
-        "19.pdf": "meiji、明治"
+        "19.pdf": "meiji"
     }
 
     def __init__(
@@ -132,7 +132,7 @@ class Store:
             raise ValueError("埋め込みデータがロードまたは生成されていません。store_embeddings() または load_embeddings() を実行してください。")
         return self._embedded
     
-    def build_faiss_index(self) -> None:
+    def old_build_faiss_index(self) -> None:
         """FAISS インデックスを作成し、ローカルに保存"""
         if not self._embedded:
             raise ValueError("埋め込みデータが存在しません。store_embeddings() を実行してください。")
@@ -156,6 +156,18 @@ class Store:
             docstore=docstore,
             index_to_docstore_id=index_to_docstore_id,
             embedding_function=embedding_function
+        )
+
+        os.makedirs("data/processed/old_faiss_index", exist_ok=True)
+
+        self._vectorstore.save_local("data/processed/old_faiss_index")
+        print("FAISS インデックスの作成・保存が完了しました！")
+
+    def build_faiss_index(self) -> None:
+        """FAISS インデックスを作成し、ローカルに保存"""
+        self._vectorstore = FAISS.from_documents(
+            documents=self._split_docs,  # メタデータ付きドキュメント
+            embedding=self.embeddings  # 事前に作成した埋め込みモデル
         )
 
         os.makedirs(self._faiss_index_path, exist_ok=True)

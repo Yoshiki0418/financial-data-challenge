@@ -1,5 +1,7 @@
 test: test
 
+
+create_faiss: false
 create_embedding: false
 
 embedded_type: 
