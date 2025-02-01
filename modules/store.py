@@ -166,8 +166,8 @@ class Store:
     def build_faiss_index(self) -> None:
         """FAISS インデックスを作成し、ローカルに保存"""
         self._vectorstore = FAISS.from_documents(
-            documents=self._split_docs,  # ✅ メタデータ付きドキュメント
-            embedding=self.embeddings  # ✅ 事前に作成した埋め込みモデル
+            documents=self._split_docs,  # メタデータ付きドキュメント
+            embedding=self.embeddings  # 事前に作成した埋め込みモデル
         )
 
         os.makedirs(self._faiss_index_path, exist_ok=True)
