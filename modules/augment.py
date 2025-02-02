@@ -1,35 +1,34 @@
+import os
+
+
 class AugmentPrompt:
     """
     RAGのプロンプト構築を管理するクラス
     """
 
-    def __init__(self, mode: str = "default"):
+    def __init__(
+        self, 
+        system_content_path: str,
+        user_content_path: str,
+        mode: str = "default",
+    ) -> None:
         """
         Args:
             mode (str, optional): 回答のモード（"default", "concise", "detailed", etc.）. Defaults to "default".
         """
         print("start AugmentPrompt")
         self.mode = mode
-        self.system_content = self._get_system_content()
+        self.system_content_path = system_content_path
+        self.system_content = self._load_text(system_content_path)
+        self.user_content_template = self._load_text(user_content_path)
 
-    def _get_system_content(self) -> str:
-        """システムメッセージを取得（モードに応じて変更可能）"""
-        base_content = (
-            "あなたは優秀なAIアシスタントです。\n"
-            "ユーザーが与えた情報だけをもとに回答してください。\n"
-            "情報がコンテキストに含まれない場合は『わかりません』と答えてください。\n"
-            "数量で答える問題の回答には、質問に記載の単位を使うこと。\n"
-            "問題に過不足なく回答すること。\n"
-        )
+    def _load_text(self, file_path: str) -> str:
+        """ 指定されたテキストファイルを読み込む """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"指定されたファイルが見つかりません: {file_path}")
 
-        if self.mode == "concise":
-            base_content += "回答は簡潔にしてください。\n"
-        elif self.mode == "detailed":
-            base_content += "回答はできるだけ詳細に説明してください。\n"
-        elif self.mode == "formal":
-            base_content += "フォーマルな言葉遣いで回答してください。\n"
-        
-        return base_content
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read().strip() 
 
     def build_prompt(self, user_query: str, doc_context: str) -> list[dict]:
         """
@@ -42,12 +41,7 @@ class AugmentPrompt:
         Returns:
             list[dict]: OpenAIのAPIに適したフォーマットのメッセージリスト
         """
-        user_content = (
-            "以下のコンテキストを参考に回答してください。\n"
-            f"質問:\n{user_query}\n\n"
-            "コンテキスト:\n"
-            f"{doc_context}"
-        )
+        user_content = self.user_content_template.format(user_query=user_query, doc_context=doc_context)
 
         messages = [
             {"role": "system", "content": self.system_content},

@@ -44,7 +44,7 @@ def run(args: DictConfig):
 
     # RAGの初期化
     retrieve = Retrieve(retrieve_embeddings, args.store.faiss_index_path)
-    augment = AugmentPrompt(args.augmentprompt.mode)
+    augment = AugmentPrompt(**args.augmentprompt)
     generate = Generate(client=client, **args.generate)
 
     # 質問を受け取る
@@ -69,7 +69,7 @@ def run(args: DictConfig):
 
     # csvファイルを構築する
     results_df = pd.DataFrame(results)
-    results_df.to_csv('data/sample_submit/predictions.csv', index=False, header=False)
+    results_df.to_csv('data/sample_submit/predictions1.csv', index=False, header=False)
 
 
 if __name__ == "__main__":
