@@ -17,9 +17,12 @@ store:
 retrieve:
   search:
     top_k: 5
+    fetch_k: 20
     return_text: True
 
 augmentprompt:
+  system_content_path: prompts_management/system_content/1.txt
+  user_content_path: prompts_management/user_content/1.txt
   mode: concise
 
 generate:

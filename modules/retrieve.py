@@ -81,7 +81,7 @@ class Retrieve:
             return "\n\n".join([doc.page_content for doc in relevant_docs])
         return relevant_docs
     
-    def search(self, query: str, top_k: int = 5, return_text: bool = True) -> list[Document] | str:
+    def search(self, query: str, top_k: int = 5, fetch_k: int = 20, return_text: bool = True) -> list[Document] | str:
         """クエリをベクトル化し、FAISSインデックスから類似検索を行う
         - 質問に企業名がある場合に、付属しているメタ情報の企業名と一致しているドキュメントだけをフィルタリング
         した上で、類似度検索を行う。
@@ -107,7 +107,8 @@ class Retrieve:
             relevant_docs = self.vectorstore.similarity_search_by_vector(
                 np.array(query_embedding, dtype=np.float32), 
                 k=top_k, 
-                filter={"company": company_name}  # 企業名をフィルタリング
+                filter={"company": company_name},  # 企業名をフィルタリング
+                fetch_k=fetch_k
             )
             print(f"フィルタ後のドキュメント数: {len(relevant_docs)} 件")
             print("")
