@@ -9,10 +9,24 @@ from langchain.document_loaders import PyPDFium2Loader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 import pickle
+from pdf2image import convert_from_path
+import pdfplumber
+from PIL import Image
+from dotenv import load_dotenv
+import gc  
+from typing import Optional, Any
+from PyPDF2 import PdfReader, PdfWriter
 
 from .embedded import *
+from modules.extractors import TableExtractor, PdfPlumberExtractor, AzureExtractor
+from modules.extractors.azure_extractor import convert_pdf_page_to_image
+from modules.utils import save_extracted_text, extract_images_from_pdf
 
-DEPLOYMENT_ID_FOR_EMBEDDING = 'embedding'
+
+load_dotenv()
+
+endpoint = os.getenv("AZURE_DOCUMENT_ENDPOINT")
+key = os.getenv("AZURE_DOCUMENT_KEY")
 
 class Store:
     # PDFファイルと会社名の対応を設定
@@ -40,38 +54,160 @@ class Store:
 
     def __init__(
         self, 
+        client: Any,
         embeddings: Embeddings,
         embedded_path: str,
         faiss_index_path: str,
+        extractor_type: str, # 抽出タイプの設定(詳細はconfig)
         chunk_size: int = 2000,
         chunk_overlap: int = 200,
-        merge_text: bool = True
+        text_extractor_type: str = "pdfplumber", # カスタム抽出時の表抽出機構のタイプ選択
+        paipline_config: Optional[dict[str]] = None, # カスタム抽出時のモードを設定
     ) -> None:
         self.embeddings = embeddings
         self._pdf_files = glob('data/documents/*.pdf')
-        self._merge_text = merge_text
         self._documents = []
         self._embedded = []
         self._embedded_path = embedded_path
         self._faiss_index_path = faiss_index_path
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
-        self._create_metadata()
+        self._images = {}
+
+        if extractor_type == "azure":
+            self.azure_extractor = AzureExtractor(endpoint, key)
+            self._azure_create_document()
+        elif extractor_type == "extracted":
+            self._extracted_create_document()
+        elif extractor_type == "custom":
+            self.table_extractor = self._select_table_instance(text_extractor_type, client)
+            print(paipline_config)
+            self._create_metadata(paipline_config)
         self._split_docs = self._split_documents(self._documents)
 
-    def _create_metadata(self) -> None:
-        """PDFを読み込み、メタデータを作成する"""
+
+    def _azure_create_document(self) -> None:
+        """
+        PDFを読み込み、ドキュメントを作成する (汎用化)
+        """
         for pdf_path in self._pdf_files:
             file_name = os.path.basename(pdf_path)
             company_name = self.pdf_to_company.get(file_name, "不明な会社")  
-            loader = PyPDFium2Loader(pdf_path)
-            self._raw_docs: list[Document] = loader.load()
 
-            for doc in self._raw_docs:
-                processed_doc = self._process_document(doc, company_name, file_name)
+            reader = PdfReader(pdf_path)
+            num_pages = len(reader.pages)
+            print(f"{file_name} は {num_pages} ページあります。")
+
+            for i in range(num_pages):
+                temp_image_path = convert_pdf_page_to_image(pdf_path, i + 1)
+                
+                # Azure の抽出機構を利用してページのテキストを抽出
+                extraction_result = self.azure_extractor.extract_text_from_local(temp_image_path)
+                markdown_text = extraction_result.get("markdown", "")
+
+                save_extracted_text(pdf_path, i + 1, markdown_text)
+
+                # NOTE: 位置情報の付属を用いたfigureの抽出を定義する
+                """
+                要件
+                1. 位置情報を元に画像をクロップする
+                2. クロップした画像を画像キャプショニングを通してテキスト化
+                3. テキスト化したものをそのページに結合
+                4. 画像をメタデータとして格納しておく？
+                """
+
+                # ページ番号などのメタデータを付与して Document オブジェクトを作成
+                metadata = {
+                    "page": i + 1,
+                    "source_file": file_name,
+                    "image_path": temp_image_path,
+                    "company": company_name,
+                }
+                doc = Document(page_content=markdown_text, metadata=metadata)
+                self._documents.append(doc)
+    
+
+    def _extracted_create_document(self)-> None:
+        """
+        PDFごとに抽出済みのMarkdownテキストファイルからテキストを読み込み、
+        Documentオブジェクトを作成して self._documents に追加する。
+        """
+        for pdf_path in self._pdf_files:
+            file_name = os.path.basename(pdf_path)
+            base_name = os.path.splitext(file_name)[0]
+            company_name = self.pdf_to_company.get(file_name, "不明な会社")  
+
+            reader = PdfReader(pdf_path)
+            num_pages = len(reader.pages)
+            print(f"{file_name} は {num_pages} ページあります。")
+
+            # PDFごとの抽出済みテキストが格納されているディレクトリパスを作成
+            base_dir = os.path.join("data", "extractored_txt", base_name)
+
+            for i in range(num_pages):
+                page_number = i + 1
+
+                # テキストファイル名は "page_<ページ番号>.txt" となっているとする
+                read_text_path = os.path.join(base_dir, f"page_{page_number}.txt")
+                if not os.path.exists(read_text_path):
+                    raise FileNotFoundError(f"[ERROR] {read_text_path} が存在しません。")
+                with open(read_text_path, "r", encoding="utf-8") as f:
+                    markdown_text = f.read()        
+
+                # ページ番号などのメタデータを付与して Document オブジェクトを作成
+                metadata = {
+                    "page": page_number,
+                    "source_file": file_name,
+                    "company": company_name,
+                }
+
+                doc = Document(page_content=markdown_text, metadata=metadata)
+                self._documents.append(doc)
+
+
+    def _create_metadata(self, config: dict = None) -> None:
+        """
+        PDFを読み込み、メタデータを作成する (汎用化)
+        
+        Args:
+            config (dict): 処理のON/OFFを設定する辞書
+                - "include_tables": 表をテキストに結合するか (True/False)
+                - "linearize_tables": 表の線形化をメタデータに保存するか (True/False)
+                - "summarize_tables": LLMで表を要約して結合するか (True/False)
+                - "caption_images": 画像のキャプションを生成しテキストに結合するか (True/False)
+                - "store_image_captions": 画像キャプションをメタデータに保存するか (True/False)
+        """
+        if config is None:
+            config = {
+                "include_tables": True,
+                "linearize_tables": False,
+                "summarize_tables": False,
+                "caption_images": False,
+                "store_image_captions": True
+            }
+
+        for pdf_path in self._pdf_files:
+            file_name = os.path.basename(pdf_path)
+            company_name = self.pdf_to_company.get(file_name, "不明な会社")  
+
+            # **テキストの取得**
+            loader = PyPDFium2Loader(pdf_path)
+            raw_docs = loader.load()
+
+            # **表の取得**
+            tables = self.table_extractor.extract_tables(pdf_path)
+
+            # # **画像キャプションの取得 (ページ単位)**
+            # image_paths = extract_images_from_pdf(pdf_path, file_name)
+            # images = self._process_image(image_paths)
+            images = None
+
+            for doc in raw_docs:
+                processed_doc = self._process_document(doc, company_name, file_name, config, tables, images)
                 self._documents.append(processed_doc)
 
             print(f'{pdf_path} からテキスト抽出終了.')
+
 
     def _preprocess_text(self, text: str) -> str:
         """テキスト前処理"""
@@ -80,17 +216,48 @@ class Store:
         text = text.lower()
         return text
     
-    def _process_document(self, doc: Document, company_name: str, file_name: str) -> Document:
+
+    def _process_document(self, doc: Document, company_name: str, file_name: str, config: dict, tables: dict, images: dict) -> Document:
         """PDFから抽出したドキュメントの前処理を行い、Documentオブジェクトを作成"""
+        page_num = doc.metadata.get("page")
         processed_content = self._preprocess_text(doc.page_content)
-        return Document(
-            page_content=processed_content,
-            metadata={
-                "company": company_name,
-                "source_file": file_name,
-                **doc.metadata  
-            }
-        )
+
+        # **該当ページの表を結合**
+        if config["include_tables"] and page_num in tables:
+            table_list = tables[(page_num)]  # ページ内のすべての表
+            print(f"📄 処理中: {file_name} | ページ番号: {page_num}")
+
+            table_summaries = []  # 各表ごとの要約リスト
+
+            for idx, table_data in enumerate(table_list):
+                if config["summarize_tables"]:
+                    table_summary = self.table_extractor.summarize_table(table_data)
+                    print(table_summary)
+                    print("")
+                    table_summaries.append(table_summary)
+                else:
+                    formatted_table = "\n".join([" | ".join([str(cell) if cell is not None else "" for cell in row]) for row in table_data if row])
+                    table_summaries.append(formatted_table)
+
+            processed_content += "\n\n" + "\n\n".join(table_summaries)
+
+        # **メタデータの作成**
+        metadata = {
+            "company": company_name,
+            "source_file": file_name,
+            **doc.metadata
+        }
+
+        # **表をメタデータに保存**
+        if config["linearize_tables"] and (file_name, page_num) in tables:
+            metadata["linearized_table"] = tables[(file_name, page_num)]
+
+        # **画像キャプションの追加**
+        if config["store_image_captions"] and (file_name, page_num) in images:
+            metadata["image_captions"] = images[(file_name, page_num)]
+
+        return Document(page_content=processed_content, metadata=metadata)
+        
     
     def _split_documents(self, documents) -> list[Document]:
         """テキストを分割"""
@@ -99,6 +266,19 @@ class Store:
             chunk_overlap=self._chunk_overlap
         )
         return text_splitter.split_documents(documents)
+    
+
+    def _select_table_instance(self, text_extractor_type: str, client: Any) -> TableExtractor:
+        match text_extractor_type.lower():
+            case "pdfplumber":
+                return PdfPlumberExtractor(client)
+            # case "camelot":
+            #     return CamelotExtractor()
+            # case "pdf2docx":
+            #     return Pdf2DocxExtractor()
+            case _:
+                raise ValueError(f"未知の表抽出方法: {text_extractor_type}")
+
 
     def store_embeddings(self, file_name: str) -> None:
         """埋め込みを作成し、保存"""
@@ -115,6 +295,7 @@ class Store:
         print(f"生成された埋め込み数: {len(self._embedded)}")
         print("埋め込みデータを保存しました。")
 
+
     def load_embeddings(self, file_name: str) -> None:
         load_path = os.path.join(self._embedded_path, file_name)
         """保存済みの埋め込みデータを読み込む"""
@@ -125,6 +306,7 @@ class Store:
         else:
             print("埋め込みデータが見つかりません。store_embeddings() を実行してください。")
 
+
     @property
     def embedded(self) -> list[list[float]]:
         """埋め込みデータを取得"""
@@ -132,6 +314,7 @@ class Store:
             raise ValueError("埋め込みデータがロードまたは生成されていません。store_embeddings() または load_embeddings() を実行してください。")
         return self._embedded
     
+
     def old_build_faiss_index(self) -> None:
         """FAISS インデックスを作成し、ローカルに保存"""
         if not self._embedded:
@@ -146,6 +329,7 @@ class Store:
         docstore = InMemoryDocstore(docstore_data)
 
         index_to_docstore_id = {i: str(i) for i in range(len(self._split_docs))}
+
 
         def embedding_function(texts: list[str]) -> list[list[float]]:
             """複数のテキストを Azure OpenAI で埋め込みに変換"""
@@ -162,6 +346,7 @@ class Store:
 
         self._vectorstore.save_local("data/processed/old_faiss_index")
         print("FAISS インデックスの作成・保存が完了しました！")
+
 
     def build_faiss_index(self) -> None:
         """FAISS インデックスを作成し、ローカルに保存"""
