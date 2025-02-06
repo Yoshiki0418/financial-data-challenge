@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     build-essential \
-    && apt-get clean
+    && apt-get clean \
+    apt-get install poppler-utils
 
 # ワークディレクトリを設定
 WORKDIR /workspace

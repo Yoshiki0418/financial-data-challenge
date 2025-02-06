@@ -3,11 +3,12 @@ sys.path.append("/usr/local/lib/python3.10/dist-packages")
 import tiktoken
 from typing import List, Dict, Any
 
+
 class Generate:
     def __init__(
         self, 
         client: Any, 
-        model: str = "gpt-4o", 
+        model: str = "4omini", 
         max_tokens: int = 54, 
         temperature: float = 0.7
     ) -> None:
@@ -54,14 +55,15 @@ class Generate:
                 messages=messages,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                top_p=0.95,
+                top_p=1,
                 frequency_penalty=0,
                 presence_penalty=0,
                 stop=None,
                 stream=False
             )
             
-            answer = response.choices[0].message.content.strip()
+            answer = response.choices[0].message.content.strip() if response.choices and response.choices[0].message.content else "わかりません。"
+
             answer = answer.replace("\n", " ").replace("\r", " ")
             
             token_count = self._count_tokens(answer)

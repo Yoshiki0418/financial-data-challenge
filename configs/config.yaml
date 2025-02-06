@@ -11,13 +11,21 @@ embedded_type:
 store:
   embedded_path: data/processed/embedded
   faiss_index_path: data/processed/faiss_index
+  extractor_type: extracted # select -> [extracted:抽出済みのドキュメントを使用, custom: 独自の抽出機構, azure: Azure Documentの抽出機構]
   chunk_size: 2000
   chunk_overlap: 200
+  text_extractor_type: pdfplumber
+  paipline_config:
+    include_tables: true
+    linearize_tables: False
+    summarize_tables: true
+    caption_images: False
+    store_image_captions: False
 
 retrieve:
   search:
-    top_k: 5
-    fetch_k: 20
+    top_k: 8
+    fetch_k: 40
     return_text: True
 
 augmentprompt:
@@ -28,4 +36,4 @@ augmentprompt:
 generate:
   model: 4omini
   max_tokens: 54
-  temperature: 0.7
+  temperature: 0
