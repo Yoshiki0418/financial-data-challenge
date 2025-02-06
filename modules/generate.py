@@ -2,13 +2,13 @@ import sys
 sys.path.append("/usr/local/lib/python3.10/dist-packages")
 import tiktoken
 from typing import List, Dict, Any
-
+from openai import OpenAI
 
 class Generate:
     def __init__(
         self, 
-        client: Any, 
-        model: str = "4omini", 
+        client: OpenAI, 
+        model: str = "gpt-4o", 
         max_tokens: int = 54, 
         temperature: float = 0.7
     ) -> None:
