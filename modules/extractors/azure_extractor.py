@@ -266,17 +266,17 @@ class AzureExtractor:
         }
 
 
-if __name__ == "__main__":
-    endpoint = "https://dcoumentai2020.cognitiveservices.azure.com/"
-    key = "A6vCfGQPoxbOa9UpTHmVlPODoYEowyFM60SCrdD2amqcsNZpff7bJQQJ99BBACYeBjFXJ3w3AAALACOGGjbN"
-    img_path = "../../data/pdf_image/10_page_4.png" 
+# if __name__ == "__main__":
+#     endpoint = "https://dcoumentai2020.cognitiveservices.azure.com/"
+#     key = "A6vCfGQPoxbOa9UpTHmVlPODoYEowyFM60SCrdD2amqcsNZpff7bJQQJ99BBACYeBjFXJ3w3AAALACOGGjbN"
+#     img_path = "../../data/pdf_image/10_page_4.png" 
 
-    extractor = AzureExtractor(endpoint, key)
+#     extractor = AzureExtractor(endpoint, key)
 
-    result = extractor.extract_text_from_local(img_path)
-    print(result["markdown"])
-    print(result["figure_positions"])
-    output_dir = "data/cropped_figures"
-    cropped_files = crop_figures_from_image(img_path, result["figure_positions"], output_dir)
+#     result = extractor.extract_text_from_local(img_path)
+#     print(result["markdown"])
+#     print(result["figure_positions"])
+#     output_dir = "data/cropped_figures"
+#     cropped_files = crop_figures_from_image(img_path, result["figure_positions"], output_dir)
 
 
