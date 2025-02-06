@@ -1,6 +1,5 @@
 import os
 
-
 class AugmentPrompt:
     """
     RAGのプロンプト構築を管理するクラス
