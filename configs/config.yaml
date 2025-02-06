@@ -34,6 +34,6 @@ augmentprompt:
   mode: concise
 
 generate:
-  model: 4omini
+  model: gpt-4o
   max_tokens: 54
   temperature: 0

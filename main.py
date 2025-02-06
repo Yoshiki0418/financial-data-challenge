@@ -1,7 +1,7 @@
 import hydra
 import pandas as pd
 from omegaconf import DictConfig
-from openai import AzureOpenAI
+from openai import AzureOpenAI, OpenAI
 import os
 from dotenv import load_dotenv
 import logging
@@ -18,13 +18,22 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 API_VERSION = os.getenv("API_VERSION")
-DEPLOYMENT_ID_FOR_CHAT_COMPLETION = os.getenv("DEPLOYMENT_ID_FOR_CHAT_COMPLETION")
 DEPLOYMENT_ID_FOR_EMBEDDING = os.getenv("DEPLOYMENT_ID_FOR_EMBEDDING")
 
-client = AzureOpenAI(
+# OpenAIのAPIキー
+OPENAI_API_KEY = os.getenv("OPEN_API_KEY")
+DEPLOYMENT_ID_FOR_CHAT_COMPLETION = os.getenv("DEPLOYMENT_ID_FOR_CHAT_COMPLETION")
+
+# Azureの埋め込み用クライアント
+azure_client = AzureOpenAI(
     api_key=AZURE_OPENAI_API_KEY,
     azure_endpoint=AZURE_OPENAI_ENDPOINT,
     api_version=API_VERSION
+)
+
+# OpenAIの質問生成用クライアント
+openai_clinet = OpenAI(
+    api_key=OPENAI_API_KEY
 )
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
@@ -34,8 +43,8 @@ def run(args: DictConfig):
     RetrieveEmbeddingClass = get_embedded(args.embedded_type.retrieve)
 
     # ストアと埋め込みクラスの初期化
-    store_embeddings = create_embedding_instance(StoreEmbeddingClass, client=client, model_name=None)
-    retrieve_embeddings = create_embedding_instance(RetrieveEmbeddingClass, client=client, model_name=None)
+    store_embeddings = create_embedding_instance(StoreEmbeddingClass, client=azure_client, model_name=None)
+    retrieve_embeddings = create_embedding_instance(RetrieveEmbeddingClass, client=azure_client, model_name=None)
 
     # FAISSをビルド
     if args.create_faiss:
@@ -45,7 +54,7 @@ def run(args: DictConfig):
     # RAGの初期化
     retrieve = Retrieve(retrieve_embeddings, args.store.faiss_index_path)
     augment = AugmentPrompt(**args.augmentprompt)
-    generate = Generate(client=client, **args.generate)
+    generate = Generate(client=openai_clinet, **args.generate)
 
     # 質問を受け取る
     queries: list[str] = get_query()
