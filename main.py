@@ -48,7 +48,7 @@ def run(args: DictConfig):
 
     # FAISSをビルド
     if args.create_faiss:
-        store = Store(client=client, embeddings=store_embeddings, **args.store)
+        store = Store(client=azure_client, embeddings=store_embeddings, **args.store)
         store.build_faiss_index()
 
     # RAGの初期化
