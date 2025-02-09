@@ -1,0 +1,13 @@
+project_name: 
+
+num_workers: 2
+
+device: cuda:0
+seed: 1234
+
+name: Handfan_VGG16
+
+model:
+  batch_size: 8
+  epochs: 200
+  lr: 0.0003
