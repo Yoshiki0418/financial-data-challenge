@@ -10,4 +10,4 @@ name: Handfan_VGG16
 model:
   batch_size: 8
   epochs: 200
-  lr: 0.0003
+  lr: 0.003

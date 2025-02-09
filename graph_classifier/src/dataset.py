@@ -73,14 +73,14 @@ def get_image_paths_and_labels(base_path: str) -> tuple[list[str], list[int]] | 
             - Otherwise, returns a list of image file paths (str) for test data.
     """
     if base_path == "data":
-        hold_dir = os.path.join(base_path, "figure")
-        non_hold_dir = os.path.join(base_path, "not-figure")
+        figure_dir = os.path.join(base_path, "figure")
+        non_figure_dir = os.path.join(base_path, "not-figure")
 
-        hold_images = glob(os.path.join(hold_dir, "*.png"))
-        non_hold_images = glob(os.path.join(non_hold_dir, "*.png"))
+        figure_images = glob(os.path.join(figure_dir, "*.png"))
+        non_figure_images = glob(os.path.join(non_figure_dir, "*.png"))
 
-        image_paths = hold_images + non_hold_images
-        labels = [1] * len(hold_images) + [0] * len(non_hold_images)
+        image_paths = figure_images + non_figure_images
+        labels = [1] * len(figure_images) + [0] * len(non_figure_images)
 
         return image_paths, labels
 
