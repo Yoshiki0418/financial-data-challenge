@@ -1,7 +1,7 @@
 test: test
 
 
-create_faiss: false
+create_faiss: true
 create_embedding: false
 
 embedded_type: 

@@ -21,6 +21,7 @@ from .embedded import *
 from modules.extractors import TableExtractor, PdfPlumberExtractor, AzureExtractor
 from modules.extractors.azure_extractor import convert_pdf_page_to_image
 from modules.utils import save_extracted_text, extract_images_from_pdf
+from modules.extractors.image_extractor import crop_figures_from_image, is_graph_image, get_cropped_image_paths
 
 
 load_dotenv()
@@ -105,7 +106,8 @@ class Store:
                 extraction_result = self.azure_extractor.extract_text_from_local(temp_image_path)
                 markdown_text = extraction_result.get("markdown", "")
 
-                save_extracted_text(pdf_path, i + 1, markdown_text)
+                # # コンテキストを保存する
+                # save_extracted_text(pdf_path, i + 1, markdown_text)
 
                 # NOTE: 位置情報の付属を用いたfigureの抽出を定義する
                 """
@@ -115,6 +117,14 @@ class Store:
                 3. テキスト化したものをそのページに結合
                 4. 画像をメタデータとして格納しておく？
                 """
+                # 座標位置に基づいて図や画像のクロッピングを行う
+                cropped_files = crop_figures_from_image(temp_image_path, extraction_result["figure_positions"])
+
+                # クロップした画像でグラフ以外を排除
+                if cropped_files:
+                    graph_files = is_graph_image(cropped_files)
+                else:
+                    print("クロップされた画像がありません。")
 
                 # ページ番号などのメタデータを付与して Document オブジェクトを作成
                 metadata = {
@@ -122,12 +132,17 @@ class Store:
                     "source_file": file_name,
                     "image_path": temp_image_path,
                     "company": company_name,
+                    "grapf_files": graph_files,
                 }
                 doc = Document(page_content=markdown_text, metadata=metadata)
                 self._documents.append(doc)
     
 
-    def _extracted_create_document(self)-> None:
+    def _extracted_create_document(
+            self,
+            use_image: bool = True, 
+            cropped_image: bool = True,
+    )-> None:
         """
         PDFごとに抽出済みのMarkdownテキストファイルからテキストを読み込み、
         Documentオブジェクトを作成して self._documents に追加する。
@@ -136,6 +151,7 @@ class Store:
             file_name = os.path.basename(pdf_path)
             base_name = os.path.splitext(file_name)[0]
             company_name = self.pdf_to_company.get(file_name, "不明な会社")  
+            graph_files = []
 
             reader = PdfReader(pdf_path)
             num_pages = len(reader.pages)
@@ -152,13 +168,29 @@ class Store:
                 if not os.path.exists(read_text_path):
                     raise FileNotFoundError(f"[ERROR] {read_text_path} が存在しません。")
                 with open(read_text_path, "r", encoding="utf-8") as f:
-                    markdown_text = f.read()        
+                    markdown_text = f.read()  
+                
+
+                # 画像データを埋め込むか
+                if use_image:
+
+                    # 既にクロップされた画像データがある場合に図の画像に分類
+                    if cropped_image:
+                        # クロップ済みの画像ファイルを抽出する
+                        cropped_files = get_cropped_image_paths(base_name, page_number)
+
+                        # クロップした画像でグラフ以外を排除
+                        if cropped_files:
+                            graph_files = is_graph_image(cropped_files)
+                        else:
+                            print("クロップされた画像がありません。")          
 
                 # ページ番号などのメタデータを付与して Document オブジェクトを作成
                 metadata = {
                     "page": page_number,
                     "source_file": file_name,
                     "company": company_name,
+                    "grapf_files": graph_files,
                 }
 
                 doc = Document(page_content=markdown_text, metadata=metadata)
