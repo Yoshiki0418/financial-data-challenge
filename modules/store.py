@@ -9,19 +9,20 @@ from langchain.document_loaders import PyPDFium2Loader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 import pickle
-from pdf2image import convert_from_path
-import pdfplumber
-from PIL import Image
 from dotenv import load_dotenv
-import gc  
 from typing import Optional, Any
-from PyPDF2 import PdfReader, PdfWriter
+from PyPDF2 import PdfReader
 
 from .embedded import *
 from modules.extractors import TableExtractor, PdfPlumberExtractor, AzureExtractor
 from modules.extractors.azure_extractor import convert_pdf_page_to_image
 from modules.utils import save_extracted_text, extract_images_from_pdf
-from modules.extractors.image_extractor import crop_figures_from_image, is_graph_image, get_cropped_image_paths
+from modules.extractors.image_extractor import (
+    crop_figures_from_image, 
+    is_graph_image, 
+    get_cropped_image_paths, 
+    text_description_image
+    )
 
 
 load_dotenv()
@@ -62,6 +63,7 @@ class Store:
         extractor_type: str, # 抽出タイプの設定(詳細はconfig)
         chunk_size: int = 2000,
         chunk_overlap: int = 200,
+        merge_image_text: bool = True,
         text_extractor_type: str = "pdfplumber", # カスタム抽出時の表抽出機構のタイプ選択
         paipline_config: Optional[dict[str]] = None, # カスタム抽出時のモードを設定
     ) -> None:
@@ -74,6 +76,8 @@ class Store:
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
         self._images = {}
+        self._client = client
+        self._merge_image_text = merge_image_text
 
         if extractor_type == "azure":
             self.azure_extractor = AzureExtractor(endpoint, key)
@@ -100,31 +104,32 @@ class Store:
             print(f"{file_name} は {num_pages} ページあります。")
 
             for i in range(num_pages):
+                page_number = i + 1
                 temp_image_path = convert_pdf_page_to_image(pdf_path, i + 1)
                 
                 # Azure の抽出機構を利用してページのテキストを抽出
                 extraction_result = self.azure_extractor.extract_text_from_local(temp_image_path)
                 markdown_text = extraction_result.get("markdown", "")
 
-                # # コンテキストを保存する
-                # save_extracted_text(pdf_path, i + 1, markdown_text)
+                # コンテキストを保存する
+                save_extracted_text(pdf_path, page_number, markdown_text)
 
-                # NOTE: 位置情報の付属を用いたfigureの抽出を定義する
-                """
-                要件
-                1. 位置情報を元に画像をクロップする
-                2. クロップした画像を画像キャプショニングを通してテキスト化
-                3. テキスト化したものをそのページに結合
-                4. 画像をメタデータとして格納しておく？
-                """
                 # 座標位置に基づいて図や画像のクロッピングを行う
                 cropped_files = crop_figures_from_image(temp_image_path, extraction_result["figure_positions"])
 
                 # クロップした画像でグラフ以外を排除
-                if cropped_files:
-                    graph_files = is_graph_image(cropped_files)
-                else:
-                    print("クロップされた画像がありません。")
+                graph_files = is_graph_image(cropped_files) if cropped_files else []
+
+                # グラフ画像をLLMでテキスト化
+                image_texts = []
+                if graph_files:
+                    for graph_file in graph_files:
+                        image_text = text_description_image(graph_file, self._client)
+                        image_texts.append(image_text)
+
+                    # テキストを結合
+                    merged_image_text = "\n\n".join(image_texts)
+                    save_extracted_text(pdf_path, page_number, merged_image_text, sub_dir="image_text")
 
                 # ページ番号などのメタデータを付与して Document オブジェクトを作成
                 metadata = {
@@ -136,12 +141,33 @@ class Store:
                 }
                 doc = Document(page_content=markdown_text, metadata=metadata)
                 self._documents.append(doc)
+
+                # 画像説明テキストの統合方法をユーザー設定で変更
+                if self._merge_image_text:
+                    # 画像の説明テキストをマークダウンに結合
+                    merged_text = markdown_text + "\n\n" + "\n".join(image_texts) if image_texts else markdown_text
+                    doc = Document(page_content=merged_text, metadata=metadata)
+                    self._documents.append(doc)
+                else:
+                    # 画像の説明テキストを別のチャンクとして格納
+                    doc_main = Document(page_content=markdown_text, metadata=metadata)
+                    self._documents.append(doc_main)
+
+                    for image_text, graph_file in zip(image_texts, graph_files):
+                        image_metadata = {
+                            "page": i + 1,
+                            "source_file": file_name,
+                            "company": company_name,
+                            "image_path": graph_file, 
+                        }
+                        doc_image = Document(page_content=image_text, metadata=image_metadata)
+                        self._documents.append(doc_image)
     
 
     def _extracted_create_document(
             self,
             use_image: bool = True, 
-            cropped_image: bool = True,
+            extracted_image_text: bool = True,
     )-> None:
         """
         PDFごとに抽出済みのMarkdownテキストファイルからテキストを読み込み、
@@ -170,31 +196,68 @@ class Store:
                 with open(read_text_path, "r", encoding="utf-8") as f:
                     markdown_text = f.read()  
                 
+                graph_files = []
+                image_texts = []
 
                 # 画像データを埋め込むか
                 if use_image:
-
-                    # 既にクロップされた画像データがある場合に図の画像に分類
-                    if cropped_image:
+                    if extracted_image_text:
+                        image_base_dir = os.path.join("data", "image_text", base_name)
+                        read_image_text_path = os.path.join(image_base_dir, f"page_{page_number}.txt")
+                        if os.path.exists(read_image_text_path): 
+                            with open(read_image_text_path, "r", encoding="utf-8") as f:
+                                existing_image_text = f.read().strip()
+                                if existing_image_text:
+                                    image_texts.append(existing_image_text)
+                        else:
+                            pass
+                    else:
                         # クロップ済みの画像ファイルを抽出する
                         cropped_files = get_cropped_image_paths(base_name, page_number)
 
                         # クロップした画像でグラフ以外を排除
                         if cropped_files:
                             graph_files = is_graph_image(cropped_files)
-                        else:
-                            print("クロップされた画像がありません。")          
 
-                # ページ番号などのメタデータを付与して Document オブジェクトを作成
+                            # LLM で画像を説明する
+                            if graph_files:
+                                for graph_file in graph_files:
+                                    image_text = text_description_image(graph_file, self._client)
+                                    image_texts.append(image_text)
+                                # テキストを結合
+                                merged_image_text = "\n\n".join(image_texts)
+                                save_extracted_text(pdf_path, page_number, merged_image_text, sub_dir="image_text")
+                        else:
+                            print("クロップされた画像がありません。")    
+
+                # メタデータの作成
                 metadata = {
                     "page": page_number,
                     "source_file": file_name,
                     "company": company_name,
-                    "grapf_files": graph_files,
+                    "graph_files": graph_files,
                 }
 
-                doc = Document(page_content=markdown_text, metadata=metadata)
-                self._documents.append(doc)
+                # 画像説明テキストの統合方法をユーザー設定で変更
+                if self._merge_image_text:
+                    # 画像の説明テキストをマークダウンに結合
+                    merged_text = markdown_text + "\n\n" + "\n".join(image_texts) if image_texts else markdown_text
+                    doc = Document(page_content=merged_text, metadata=metadata)
+                    self._documents.append(doc)
+                else:
+                    # 画像の説明テキストを別のチャンクとして格納
+                    doc_main = Document(page_content=markdown_text, metadata=metadata)
+                    self._documents.append(doc_main)
+
+                    for image_text, graph_file in zip(image_texts, graph_files):
+                        image_metadata = {
+                            "page": page_number,
+                            "source_file": file_name,
+                            "company": company_name,
+                            "image_path": graph_file, 
+                        }
+                        doc_image = Document(page_content=image_text, metadata=image_metadata)
+                        self._documents.append(doc_image)
 
 
     def _create_metadata(self, config: dict = None) -> None:

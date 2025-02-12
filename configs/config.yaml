@@ -1,7 +1,7 @@
 test: test
 
 
-create_faiss: true
+create_faiss: false
 create_embedding: false
 
 embedded_type: 
@@ -14,6 +14,7 @@ store:
   extractor_type: extracted # select -> [extracted:抽出済みのドキュメントを使用, custom: 独自の抽出機構, azure: Azure Documentの抽出機構]
   chunk_size: 2000
   chunk_overlap: 200
+  merge_image_text: True # 画像説明テキストを抽出されたマークダウンと同じチャンクとして結合させるか
   text_extractor_type: pdfplumber
   paipline_config:
     include_tables: true
@@ -24,7 +25,7 @@ store:
 
 retrieve:
   search:
-    top_k: 8
+    top_k: 10
     fetch_k: 40
     return_text: True
 
@@ -36,4 +37,4 @@ augmentprompt:
 generate:
   model: gpt-4o
   max_tokens: 54
-  temperature: 0
+  temperature: 0.7

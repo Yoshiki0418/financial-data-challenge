@@ -1,7 +1,7 @@
 import re
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.ai.documentintelligence.models import AnalyzeDocumentRequest, DocumentContentFormat
+from azure.ai.documentintelligence.models import DocumentContentFormat
 from pdf2image import convert_from_path
 import os
 from azure.core.exceptions import HttpResponseError
@@ -185,6 +185,7 @@ class AzureExtractor:
         # HTML の <table> ブロックをパイプ区切りの Markdown テーブルに変換
         def replace_table_block(match):
             html_table = match.group(0)
+            html_table = html_table.replace("△", "-") 
             return convert_html_table_to_markdown(html_table)
         
         markdown_text = re.sub(r"<table>.*?</table>", replace_table_block, markdown_text, flags=re.DOTALL).strip()

@@ -5,6 +5,8 @@ from torchvision import transforms
 import shutil
 import glob
 from graph_classifier.src.model import ResNet50BinaryClassifier
+import base64
+from typing import Any
 
 
 # フィルタリングの閾値
@@ -149,3 +151,77 @@ def get_cropped_image_paths(base_name: str, page_number: int, crop_dir: str = "d
     image_paths = sorted(glob.glob(os.path.join(page_dir, "figure_*.png")))
 
     return image_paths
+
+
+def text_description_image(image_path: str, client: Any) -> str:
+    """
+    Azure OpenAI API（GPT-4o mini）を使用して画像を説明するテキストを生成する。
+
+    Args:
+        image_path (str): 説明する画像のパス
+        client: Azure OpenAI API クライアントインスタンス
+
+    Returns:
+        str: 画像の説明文（日本語）
+    """
+    # 画像を Base64 にエンコード
+    with open(image_path, "rb") as img_file:
+        base64_image = base64.b64encode(img_file.read()).decode("utf-8")
+
+    image_url = {
+        "url": f"data:image/png;base64,{base64_image}"
+    }
+
+    prompt = "次の画像を説明してください。できるだけ詳細に、決算データやグラフの特徴を明確にしてください。"
+
+    system_content = (
+            """
+            ## 役割
+
+            あなたは金融データ分析の専門家です。以下のプロセスと指示に従って、データの要約を行ってください。
+
+            ## 指示
+
+            1. ユーザーが与えた情報だけをもとに要約してください。\n
+            2. 画像データに存在しないことは記述しないでください。\n
+            3. RAGのコンテキストとして使用されるので、曖昧な情報に変換しないでください。 \n
+            4. 画像情報を過不足なく要約すること。 \n
+            5. 画像にある数値はそのまま使用すること。\n
+            6. 推測した内容は含まないでください。\n
+            7. 画像が何を示しているかを推測するのではなく、画像の情報を詳細にまとめてください。\n
+            """
+        )
+
+    # メッセージリストを作成
+    messages = [
+        {
+            "role": "system",
+            "content": system_content
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prompt,
+                },
+                {
+                    "type": "image_url",
+                    "image_url": image_url,
+                }
+            ]
+        }
+    ]
+
+    print(client)
+
+    response = client.chat.completions.create(
+        model="4omini", 
+        messages=messages,
+        temperature=0.5,
+        max_tokens=2000,
+    )
+
+    text_description = response.choices[0].message.content.strip()
+    
+    return text_description
