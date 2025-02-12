@@ -47,4 +47,13 @@ class AugmentPrompt:
             {"role": "user", "content": user_content}
         ]
 
+        # messages = [
+        #     {"role": "user", "content": user_content}
+        # ]
+
+        # messages = [
+        #     {"role": "developer", "content": self.system_content},
+        #     {"role": "user", "content": user_content}
+        # ]
+
         return messages

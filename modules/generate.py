@@ -1,7 +1,7 @@
 import sys
 sys.path.append("/usr/local/lib/python3.10/dist-packages")
 import tiktoken
-from typing import List, Dict, Any
+from typing import List, Dict
 from openai import OpenAI
 
 class Generate:
@@ -58,9 +58,16 @@ class Generate:
                 top_p=1,
                 frequency_penalty=0,
                 presence_penalty=0,
-                stop=None,
                 stream=False
             )
+
+            # response = self.client.chat.completions.create(
+            #     model="o1",
+            #     messages=messages,
+            #     max_tokens=self.max_tokens, 
+            #     temperature=self.temperature,  
+            #     stream=False
+            # )
             
             answer = response.choices[0].message.content.strip() if response.choices and response.choices[0].message.content else "わかりません。"
 
