@@ -25,16 +25,16 @@ store:
 
 retrieve:
   search:
-    top_k: 10
+    top_k: 8
     fetch_k: 40
     return_text: True
 
 augmentprompt:
   system_content_path: prompts_management/system_content/1.txt
-  user_content_path: prompts_management/user_content/1.txt
+  user_content_path: prompts_management/user_content/o1-preview.txt
   mode: concise
 
 generate:
-  model: gpt-4o
+  model: o1-preview
   max_tokens: 54
   temperature: 0.7
