@@ -1,7 +1,7 @@
 import sys
 sys.path.append("/usr/local/lib/python3.10/dist-packages")
 import tiktoken
-from typing import List, Dict, Any
+from typing import List, Dict
 from openai import OpenAI
 
 class Generate:
@@ -50,17 +50,31 @@ class Generate:
         """
         roop_count = 0
         while True:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0,
-                stop=None,
-                stream=False
-            )
+            if self.model in ("gpt-4o", "4omini"):
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                    top_p=0.5,
+                    frequency_penalty=0,
+                    presence_penalty=0,
+                    stream=False
+                )
+
+            elif self.model in ("o1-mini", "o1-preview"):
+                user_only_messages = [messages[1]]
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=user_only_messages,
+                    max_completion_tokens=5000, 
+                )
+                if not response.choices:
+                    raise ValueError("No choices returned from the model")
+
+                content = response.choices[0].message.content.strip()
+                if not content:
+                    raise ValueError("Empty response from the model")
             
             answer = response.choices[0].message.content.strip() if response.choices and response.choices[0].message.content else "わかりません。"
 

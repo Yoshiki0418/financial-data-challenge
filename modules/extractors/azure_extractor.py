@@ -1,12 +1,10 @@
 import re
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.ai.documentintelligence.models import AnalyzeDocumentRequest, DocumentContentFormat
+from azure.ai.documentintelligence.models import DocumentContentFormat
 from pdf2image import convert_from_path
 import os
-from PyPDF2 import PdfReader
 from azure.core.exceptions import HttpResponseError
-from PIL import Image
 
 
 def convert_pdf_page_to_image(pdf_path: str, page_number: int, dpi: int = 300) -> str:
@@ -28,51 +26,6 @@ def convert_pdf_page_to_image(pdf_path: str, page_number: int, dpi: int = 300) -
         temp_image_path = f"data/pdf_image/{base_name}_page_{page_number}.png"
         image.save(temp_image_path, "PNG")
         return temp_image_path
-
-def crop_figures_from_image(image_path: str, figure_positions: list, output_dir: str) -> list:
-    """
-    与えられた画像ファイルから、figure_positions の各ポリゴン領域をクロッピングして保存します。
-    
-    Args:
-        image_path (str): クロッピング元の画像ファイルパス
-        figure_positions (list): 以下の形式のリスト
-            [
-              {'figure_index': 1, 'page_number': 1, 'polygon': [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]},
-              ...
-            ]
-        output_dir (str): クロッピング結果を保存するディレクトリ
-    Returns:
-        list: 保存したクロップ画像のファイルパスリスト
-    """
-    # 出力ディレクトリが存在しない場合は作成
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # 画像を開く
-    img = Image.open(image_path)
-    cropped_files = []
-    
-    for fig in figure_positions:
-        polygon = fig.get("polygon", [])
-        if not polygon:
-            continue
-        
-        # ポリゴンの各座標から、左上と右下の座標を算出（矩形領域に変換）
-        xs = [p[0] for p in polygon]
-        ys = [p[1] for p in polygon]
-        left, upper, right, lower = min(xs), min(ys), max(xs), max(ys)
-        bbox = (left, upper, right, lower)
-        
-        # 画像をクロッピング
-        cropped_img = img.crop(bbox)
-        
-        # 元画像のファイル名を取得し、figure番号を付与して保存
-        base_name = os.path.splitext(os.path.basename(image_path))[0]
-        output_file = os.path.join(output_dir, f"{base_name}_figure_{fig['figure_index']}.png")
-        cropped_img.save(output_file)
-        cropped_files.append(output_file)
-        print(f"Cropped figure {fig['figure_index']} saved as {output_file}")
-    
-    return cropped_files
 
 def convert_html_table_to_markdown(html_table: str) -> str:
     """
@@ -199,8 +152,6 @@ class AzureExtractor:
         # Markdown 形式の出力は result.content に格納される
         markdown_text = result.content
 
-        print(markdown_text)
-
         # --- ページ情報の除去 ---
         # <!-- PageHeader="..." -->、<!-- PageFooter="..." -->、<!-- PageNumber="..." --> を削除
         markdown_text = re.sub(r"<!--\s*(PageHeader|PageFooter|PageNumber)=\".*?\"\s*-->\n?", "", markdown_text)
@@ -234,6 +185,7 @@ class AzureExtractor:
         # HTML の <table> ブロックをパイプ区切りの Markdown テーブルに変換
         def replace_table_block(match):
             html_table = match.group(0)
+            html_table = html_table.replace("△", "-") 
             return convert_html_table_to_markdown(html_table)
         
         markdown_text = re.sub(r"<table>.*?</table>", replace_table_block, markdown_text, flags=re.DOTALL).strip()
@@ -246,19 +198,25 @@ class AzureExtractor:
         # 例: "*3" のようなパターンを削除（※として "*" を使用）
         markdown_text = re.sub(r'※3(?=\d)', '', markdown_text)
 
-        # --- Figure の位置情報を抽出 ---
+        # **図領域をまとめる**
         figure_positions = []
-        if getattr(result, "figures", None):  # または if result.figures:
-            for fig_idx, figure in enumerate(result.figures):
-                if hasattr(figure, "bounding_regions") and figure.bounding_regions:
-                    for region in figure.bounding_regions:
-                        # region.polygon は [x1, y1, x2, y2, ...] の形式と仮定し、(x, y) ペアに変換
-                        polygon_coords = list(zip(region.polygon[::2], region.polygon[1::2]))
-                        figure_positions.append({
-                            "figure_index": fig_idx + 1,
-                            "page_number": region.page_number,
-                            "polygon": polygon_coords
-                        })
+        if getattr(result, "figures", None):
+            for i, fig in enumerate(result.figures):
+                print(i)
+                print(fig)
+                if not getattr(fig, "bounding_regions", []):
+                    # バウンディング領域自体が無いならスキップ
+                    continue
+
+                # bounding_regions が複数の場合もありうるのでループ
+                for region in fig.bounding_regions:
+                    polygon_coords = list(zip(region.polygon[::2], region.polygon[1::2]))
+                    
+                    figure_positions.append({
+                        "figure_index": i + 1,         
+                        "page_number": region.page_number,
+                        "polygon": polygon_coords,
+                    })
 
         return {
             "markdown": markdown_text,
@@ -269,14 +227,14 @@ class AzureExtractor:
 # if __name__ == "__main__":
 #     endpoint = "https://dcoumentai2020.cognitiveservices.azure.com/"
 #     key = "A6vCfGQPoxbOa9UpTHmVlPODoYEowyFM60SCrdD2amqcsNZpff7bJQQJ99BBACYeBjFXJ3w3AAALACOGGjbN"
-#     img_path = "../../data/pdf_image/10_page_4.png" 
+#     img_path = "../../data/pdf_image/13_page_34.png" 
 
 #     extractor = AzureExtractor(endpoint, key)
 
 #     result = extractor.extract_text_from_local(img_path)
 #     print(result["markdown"])
 #     print(result["figure_positions"])
-#     output_dir = "data/cropped_figures"
+#     output_dir = "../../data/cropped_figures"
 #     cropped_files = crop_figures_from_image(img_path, result["figure_positions"], output_dir)
 
 

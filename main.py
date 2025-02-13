@@ -91,7 +91,7 @@ def run(args: DictConfig):
 
     # csvファイルを構築する
     results_df = pd.DataFrame(results)
-    results_df.to_csv('data/sample_submit/predictions.csv', index=False, header=False)
+    results_df.to_csv('data/sample_submit/predictions1.csv', index=False, header=False)
 
 
 if __name__ == "__main__":

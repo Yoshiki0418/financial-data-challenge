@@ -1,8 +1,10 @@
-# utils.py
 import os
+import pdfplumber
+import gc  
+from pdf2image import convert_from_path
 
 
-def save_extracted_text(pdf_path: str, page_number: int, text_content: str):
+def save_extracted_text(pdf_path: str, page_number: int, text_content: str, sub_dir: str = "extractored_txt2"):
     """
     PDFのページごとの抽出テキストをファイルとして保存します。
     
@@ -18,7 +20,7 @@ def save_extracted_text(pdf_path: str, page_number: int, text_content: str):
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
     # PDFごとのディレクトリを作成
-    output_dir = os.path.join("data", "extractored_txt2", base_name)
+    output_dir = os.path.join("data", sub_dir, base_name)
     os.makedirs(output_dir, exist_ok=True)
 
     # ページごとのテキストファイル名

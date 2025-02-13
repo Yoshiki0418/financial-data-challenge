@@ -20,3 +20,4 @@ pdf2image
 pdfplumber
 PyPDF2
 azure-ai-documentintelligence
+torchvision
